@@ -120,6 +120,7 @@ protected:
 	// culled = while rendering, depending on camera
 	bool       							m_bVisible; 
 	bool								m_bOccluder;
+	bool								m_bRender;
 
 	/// Object activity culling settings converted from blender objects.
 	ActivityCullingInfo m_activityCullingInfo;
