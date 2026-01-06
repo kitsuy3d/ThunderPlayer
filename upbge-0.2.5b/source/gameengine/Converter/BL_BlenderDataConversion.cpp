@@ -1846,6 +1846,16 @@ void BL_PostConvertBlenderObjects(KX_Scene *kxscene, const BL_SceneConverter& sc
 
 #endif  // WITH_PYTHON
 
+	//culling and render list stuff by kitsuy
+	for (KX_GameObject *gameobj : objectlist) {
+		if (gameobj->GetActivityCullingInfo().m_flags != KX_GameObject::ActivityCullingInfo::ACTIVITY_NONE) {
+			kxscene->AddCullingObject(gameobj);
+		}
+		if (gameobj->GetVisible()) {
+			kxscene->GetRenderList()->Add(CM_AddRef(gameobj));
+		}
+	}
+
 	// Init textures for all materials.
 	for (KX_BlenderMaterial *mat : sceneconverter.GetMaterials()) {
 		mat->InitTextures();
