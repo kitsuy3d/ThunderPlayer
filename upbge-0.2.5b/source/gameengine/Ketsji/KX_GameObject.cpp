@@ -118,6 +118,7 @@ KX_GameObject::KX_GameObject(void *sgReplicationInfo,
 	m_objectColor(mt::one4),
 	m_bVisible(true),
 	m_bOccluder(false),
+	m_bRender(true),
 	m_autoUpdateBounds(false),
 	m_physicsController(nullptr),
 	m_graphicController(nullptr),
@@ -150,6 +151,7 @@ KX_GameObject::KX_GameObject(const KX_GameObject& other)
 	m_objectColor(other.m_objectColor),
 	m_bVisible(other.m_bVisible),
 	m_bOccluder(other.m_bOccluder),
+	m_bRender(other.m_bRender),
 	m_activityCullingInfo(other.m_activityCullingInfo),
 	m_autoUpdateBounds(other.m_autoUpdateBounds),
 	m_physicsController(nullptr),
@@ -835,29 +837,70 @@ void KX_GameObject::UpdateLod(KX_Scene *scene, const mt::vec3& cam_pos, float lo
 
 void KX_GameObject::UpdateActivity(float distance)
 {
-	// Manage physics culling.
-	if (m_activityCullingInfo.m_flags & ActivityCullingInfo::ACTIVITY_PHYSICS) {
-		if (distance > m_activityCullingInfo.m_physicsRadius) {
-			SuspendPhysics(false);
-		}
-		else {
-			RestorePhysics();
-		}
-	}
-
 	// Manage logic culling.
+	KX_Scene *scene = GetScene();
+	bool ret = true;
 	if (m_activityCullingInfo.m_flags & ActivityCullingInfo::ACTIVITY_LOGIC) {
 		if (distance > m_activityCullingInfo.m_logicRadius) {
+			if (!(m_bRender)) {
+				return;
+			}
 			SuspendLogic();
 			if (m_actionManager) {
 				m_actionManager->Suspend();
 			}
+			m_bRender = false;
+			m_cullingNode.SetCulled(true);
+			if (m_bVisible) {
+				if (scene->GetRenderList()->RemoveValue(this)){
+					ret = (Release() != nullptr);
+				}
+			}
+			return;
 		}
 		else {
+			if (m_bRender) {
+				return;
+			}
 			ResumeLogic();
 			if (m_actionManager) {
 				m_actionManager->Resume();
 			}
+			m_bRender = true;
+			if (m_bVisible) {
+				scene->GetRenderList()->Add(CM_AddRef(this));
+			}
+			return;
+		}
+	}
+
+	if (m_activityCullingInfo.m_flags & ActivityCullingInfo::ACTIVITY_PHYSICS) {
+		if (distance > m_activityCullingInfo.m_physicsRadius) {
+			if (!(m_bRender)) {
+				return;
+			}
+			SuspendPhysics(false);
+			SuspendLogic();
+			m_bRender = false;
+			m_cullingNode.SetCulled(true);
+			if (m_bVisible) {
+				if (scene->GetRenderList()->RemoveValue(this)){
+					ret = (Release() != nullptr);
+				}
+			}
+			return;
+		}
+		else {
+			if (m_bRender) {
+				return;
+			}
+			RestorePhysics();
+			ResumeLogic();
+			m_bRender = true;
+			if (m_bVisible) {
+				scene->GetRenderList()->Add(CM_AddRef(this));
+			}
+			return;
 		}
 	}
 }
