@@ -166,6 +166,7 @@ KX_Scene::KX_Scene(SCA_IInputDevice *inputDevice,
 	m_inactivelist = new EXP_ListValue<KX_GameObject>();
 	m_cameralist = new EXP_ListValue<KX_Camera>();
 	m_fontlist = new EXP_ListValue<KX_FontObject>();
+	m_renderlist = new EXP_ListValue<KX_GameObject>();
 
 	bool useFxaa = (scene->gm.aasamples == 1);
 	m_filterManager = new KX_2DFilterManager(useFxaa);
@@ -248,6 +249,10 @@ KX_Scene::~KX_Scene()
 
 	if (m_fontlist) {
 		m_fontlist->Release();
+	}
+
+	if (m_renderlist) {
+		m_renderlist->Release();
 	}
 
 	if (m_filterManager) {
@@ -349,6 +354,11 @@ EXP_ListValue<KX_Camera> *KX_Scene::GetCameraList() const
 EXP_ListValue<KX_FontObject> *KX_Scene::GetFontList() const
 {
 	return m_fontlist;
+}
+
+EXP_ListValue<KX_GameObject> *KX_Scene::GetRenderList() const
+{
+	return m_renderlist;
 }
 
 SCA_LogicManager *KX_Scene::GetLogicManager() const
@@ -513,6 +523,14 @@ KX_GameObject *KX_Scene::AddNodeReplicaObject(SG_Node *node, KX_GameObject *game
 
 	// This is the list of object that are send to the graphics pipeline.
 	m_objectlist->Add(CM_AddRef(newobj));
+
+	if (gameobj->GetVisible()) {
+		m_renderlist->Add(CM_AddRef(newobj));
+	}
+
+	if (gameobj->GetActivityCullingInfo().m_flags != KX_GameObject::ActivityCullingInfo::ACTIVITY_NONE) {
+		AddCullingObject(newobj);
+	}
 
 	switch (newobj->GetGameObjectType()) {
 		case SCA_IObject::OBJ_LIGHT:
@@ -1048,8 +1066,12 @@ bool KX_Scene::NewRemoveObject(KX_GameObject *gameobj)
 	if (m_cameralist->RemoveValue(gameobj)) {
 		ret = (gameobj->Release() != nullptr);
 	}
+	if (m_renderlist->RemoveValue(gameobj)) {
+		ret = (gameobj->Release() != nullptr);
+	}
 
 	// WARNING: 'gameobj' maybe be freed now, only compare, don't access.
+	CM_ListRemoveIfFound(m_cullinglist, gameobj);
 	CM_ListRemoveIfFound(m_animatedlist, gameobj);
 	CM_ListRemoveIfFound(m_euthanasyobjects, gameobj);
 	CM_ListRemoveIfFound(m_tempObjectList, gameobj);
@@ -1112,7 +1134,7 @@ std::vector<KX_GameObject *> KX_Scene::CalculateVisibleMeshes(KX_Camera *cam, RA
 {
 	std::vector<KX_GameObject *> objects;
 	if (!cam->GetFrustumCulling()) {
-		for (KX_GameObject *gameobj : m_objectlist) {
+		for (KX_GameObject *gameobj : m_renderlist) {
 			gameobj->GetCullingNode().SetCulled(false);
 			objects.push_back(gameobj);
 		}
@@ -1129,7 +1151,7 @@ std::vector<KX_GameObject *> KX_Scene::CalculateVisibleMeshes(const SG_Frustum& 
 
 	bool dbvt_culling = false;
 	if (m_dbvtCulling) {
-		for (KX_GameObject *gameobj : m_objectlist) {
+		for (KX_GameObject *gameobj : m_renderlist) {
 			/* Reset KX_GameObject m_culled to true before doing culling
 			 * since DBVT culling will only set it to false.
 			 */
@@ -1148,7 +1170,7 @@ std::vector<KX_GameObject *> KX_Scene::CalculateVisibleMeshes(const SG_Frustum& 
 	}
 
 	if (!dbvt_culling) {
-		KX_CullingHandler handler(m_objectlist, frustum, layer);
+		KX_CullingHandler handler(m_renderlist, frustum, layer);
 		objects = handler.Process();
 	}
 
@@ -1278,6 +1300,16 @@ void KX_Scene::LogicBeginFrame(double curtime, double framestep)
 void KX_Scene::AddAnimatedObject(KX_GameObject *gameobj)
 {
 	CM_ListAddIfNotFound(m_animatedlist, gameobj);
+}
+
+void KX_Scene::AddCullingObject(KX_GameObject *gameobj)
+{
+	CM_ListAddIfNotFound(m_cullinglist, gameobj);
+}
+
+void KX_Scene::RemoveCullingObject(KX_GameObject *gameobj)
+{
+	CM_ListRemoveIfFound(m_cullinglist, gameobj);
 }
 
 static void update_anim_thread_func(TaskPool *pool, void *taskdata, int UNUSED(threadid))
@@ -1476,11 +1508,11 @@ void KX_Scene::UpdateObjectActivity()
 		return;
 	}
 
-	for (KX_GameObject *gameobj : m_objectlist) {
+	for (KX_GameObject *gameobj : m_cullinglist) {
 		// If the object doesn't manage activity culling we don't compute distance.
-		if (gameobj->GetActivityCullingInfo().m_flags == KX_GameObject::ActivityCullingInfo::ACTIVITY_NONE) {
-			continue;
-		}
+		//if (gameobj->GetActivityCullingInfo().m_flags == KX_GameObject::ActivityCullingInfo::ACTIVITY_NONE) {
+		//	continue;
+		//}
 
 		// For each camera compute the distance to objects and keep the minimum distance.
 		const mt::vec3& obpos = gameobj->NodeGetWorldPosition();
@@ -1704,6 +1736,9 @@ bool KX_Scene::MergeScene(KX_Scene *other)
 
 	m_fontlist->MergeList(other->GetFontList());
 	other->GetFontList()->ReleaseAndRemoveAll();
+
+	m_renderlist->MergeList(other->GetRenderList());
+	other->GetRenderList()->ReleaseAndRemoveAll();
 
 	// Grab any timer properties from the other scene.
 	SCA_TimeEventManager *timemgr_other = other->GetTimeEventManager();
