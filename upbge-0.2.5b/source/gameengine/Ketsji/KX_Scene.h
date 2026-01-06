@@ -152,6 +152,10 @@ private:
 	EXP_ListValue<KX_Camera> *m_cameralist;
 	/// The list of fonts for this scene.
 	EXP_ListValue<KX_FontObject> *m_fontlist;
+	/// The list of culling objects for this scene.
+	std::vector<KX_GameObject *> m_cullinglist;
+	/// The list of render objects for this scene.
+	EXP_ListValue<KX_GameObject> *m_renderlist;
 
 	/**
 	 * List of nodes that needs scenegraph update
@@ -298,6 +302,8 @@ public:
 	void RemoveEuthanasyObjects();
 
 	void AddAnimatedObject(KX_GameObject *gameobj);
+	void AddCullingObject(KX_GameObject *gameobj);
+	void RemoveCullingObject(KX_GameObject *gameobj);
 
 	/**
 	 * \section Logic stuff
@@ -315,6 +321,7 @@ public:
 	EXP_ListValue<KX_LightObject> *GetLightList() const;
 	EXP_ListValue<KX_Camera> *GetCameraList() const;
 	EXP_ListValue<KX_FontObject> *GetFontList() const;
+	EXP_ListValue<KX_GameObject> *GetRenderList() const;
 
 	SCA_LogicManager *GetLogicManager() const;
 	SCA_TimeEventManager *GetTimeEventManager() const;
